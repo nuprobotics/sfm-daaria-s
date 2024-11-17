@@ -92,20 +92,55 @@ def triangulation(
 
 # Task 4
 def resection(
-        image1,
-        image2,
-        camera_matrix,
-        matches,
-        points_3d
-):
-    pass
-    # YOUR CODE HERE
+        image1: np.ndarray,
+        image2: np.ndarray,
+        camera_matrix: np.ndarray,
+        matches: typing.Sequence[cv2.DMatch],
+        points_3d: np.ndarray
+) -> typing.Tuple[np.ndarray, np.ndarray]:
+    # Extract matched 2D points from the first image
+    sift = cv2.SIFT_create()
+    kp1, _ = sift.detectAndCompute(image1, None)
+    points2d = np.array([kp1[match.queryIdx].pt for match in matches], dtype=np.float32)
 
+    # Solve PnP problem
+    success, rvec, tvec, _ = cv2.solvePnPRansac(
+        objectPoints=points_3d,
+        imagePoints=points2d,
+        cameraMatrix=camera_matrix,
+        distCoeffs=None,
+        reprojectionError=8.0,
+        flags=cv2.SOLVEPNP_ITERATIVE
+    )
+
+    if not success:
+        raise RuntimeError("Camera resectioning failed.")
+
+    # Convert rvec to rotation matrix
+    rotation_matrix, _ = cv2.Rodrigues(rvec)
+
+    return rotation_matrix, tvec
 
 def convert_to_world_frame(translation_vector, rotation_matrix):
-    pass
-    # YOUR CODE HERE
+    """
+    Converts camera rotation and translation to world coordinate system.
 
+    Args:
+        translation_vector (np.ndarray): Translation vector of shape (3, 1).
+        rotation_matrix (np.ndarray): Rotation matrix of shape (3, 3).
+
+    Returns:
+        tuple: A tuple containing:
+            - Camera position in world coordinates (np.ndarray of shape (3, 1)).
+            - Camera orientation in world coordinates (np.ndarray of shape (3, 3)).
+    """
+    # Compute the transpose of the rotation matrix (inverse for orthonormal matrix)
+    rotation_world = rotation_matrix.T
+
+    # Compute the camera position in world coordinates
+    camera_position = -np.dot(rotation_world, translation_vector)
+
+    return camera_position, rotation_world
 
 def visualisation(
         camera_position1: np.ndarray,
