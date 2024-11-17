@@ -90,57 +90,40 @@ def triangulation(
 
     return points_3d
 
+
 # Task 4
 def resection(
-        image1: np.ndarray,
-        image2: np.ndarray,
-        camera_matrix: np.ndarray,
-        matches: typing.Sequence[cv2.DMatch],
-        points_3d: np.ndarray
-) -> typing.Tuple[np.ndarray, np.ndarray]:
-    # Extract matched 2D points from the first image
-    sift = cv2.SIFT_create()
-    kp1, _ = sift.detectAndCompute(image1, None)
-    points2d = np.array([kp1[match.queryIdx].pt for match in matches], dtype=np.float32)
-
-    # Solve PnP problem
-    success, rvec, tvec, _ = cv2.solvePnPRansac(
-        objectPoints=points_3d,
-        imagePoints=points2d,
-        cameraMatrix=camera_matrix,
-        distCoeffs=None,
-        reprojectionError=8.0,
-        flags=cv2.SOLVEPNP_ITERATIVE
+        image1,
+        image2,
+        camera_matrix,
+        matches,
+        points_3d
+):
+    kps_image1, kps_image2, refined_matches = get_matches(image1, image2)
+    point_map = {match.queryIdx: points_3d[i] for i, match in enumerate(matches)}
+    object_points = []
+    image_points = []
+    for m in refined_matches:
+        point_idx = m.queryIdx
+        if point_idx in point_map:
+            object_points.append(point_map[point_idx])
+            image_points.append(kps_image2[m.trainIdx].pt)
+    object_points = np.array(object_points)
+    image_points = np.array(image_points)
+    _, rotation_vec, translation_vec, _ = cv2.solvePnPRansac(
+        object_points, image_points, camera_matrix, np.zeros(5)
     )
 
-    if not success:
-        raise RuntimeError("Camera resectioning failed.")
+    rotation_matrix, _ = cv2.Rodrigues(rotation_vec)
+    return rotation_matrix, translation_vec
 
-    # Convert rvec to rotation matrix
-    rotation_matrix, _ = cv2.Rodrigues(rvec)
-
-    return rotation_matrix, tvec
 
 def convert_to_world_frame(translation_vector, rotation_matrix):
-    """
-    Converts camera rotation and translation to world coordinate system.
+    world_rotation_matrix = rotation_matrix.T
+    world_position = -world_rotation_matrix @ translation_vector
 
-    Args:
-        translation_vector (np.ndarray): Translation vector of shape (3, 1).
-        rotation_matrix (np.ndarray): Rotation matrix of shape (3, 3).
+    return world_position, world_rotation_matrix
 
-    Returns:
-        tuple: A tuple containing:
-            - Camera position in world coordinates (np.ndarray of shape (3, 1)).
-            - Camera orientation in world coordinates (np.ndarray of shape (3, 3)).
-    """
-    # Compute the transpose of the rotation matrix (inverse for orthonormal matrix)
-    rotation_world = rotation_matrix.T
-
-    # Compute the camera position in world coordinates
-    camera_position = -np.dot(rotation_world, translation_vector)
-
-    return camera_position, rotation_world
 
 def visualisation(
         camera_position1: np.ndarray,
@@ -150,7 +133,6 @@ def visualisation(
         camera_position3: np.ndarray,
         camera_rotation3: np.ndarray,
 ):
-
     def plot_camera(ax, position, direction, label):
         color_scatter = 'blue' if label != 'Camera 3' else 'green'
         # print(position)
@@ -160,7 +142,6 @@ def visualisation(
         ax.quiver(position[0][0], position[1][0], position[2][0], direction[0], direction[1], direction[2],
                   length=1, color=color_quiver, arrow_length_ratio=0.2)
         ax.text(position[0][0], position[1][0], position[2][0], label, color='black')
-
 
     camera_positions = [camera_position1, camera_position2, camera_position3]
     camera_directions = [camera_rotation1[:, 2], camera_rotation2[:, 2], camera_rotation3[:, 2]]
@@ -190,7 +171,6 @@ def visualisation(
     ax_azim_slider = plt.axes([0.1, 0.05, 0.65, 0.03])
     azim_slider = Slider(ax_azim_slider, 'Azim', 0, 360, valinit=initial_azim)
 
-
     def update(val):
         elev = elev_slider.val
         azim = azim_slider.val
@@ -215,7 +195,7 @@ def main():
     R2, t2, E = get_second_camera_position(key_points1, key_points2, matches_1_to_2, camera_matrix)
     triangulated_points = triangulation(
         camera_matrix,
-        np.array([0, 0, 0]).reshape((3,1)),
+        np.array([0, 0, 0]).reshape((3, 1)),
         np.eye(3),
         t2,
         R2,
@@ -225,7 +205,7 @@ def main():
     )
 
     R3, t3 = resection(image1, image3, camera_matrix, matches_1_to_2, triangulated_points)
-    camera_position1, camera_rotation1 = convert_to_world_frame(np.array([0, 0, 0]).reshape((3,1)), np.eye(3))
+    camera_position1, camera_rotation1 = convert_to_world_frame(np.array([0, 0, 0]).reshape((3, 1)), np.eye(3))
     camera_position2, camera_rotation2 = convert_to_world_frame(t2, R2)
     camera_position3, camera_rotation3 = convert_to_world_frame(t3, R3)
     visualisation(
@@ -236,6 +216,7 @@ def main():
         camera_position3,
         camera_rotation3
     )
+
 
 if __name__ == "__main__":
     main()
