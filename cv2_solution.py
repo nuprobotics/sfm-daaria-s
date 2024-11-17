@@ -60,10 +60,35 @@ def triangulation(
         kp1: typing.Sequence[cv2.KeyPoint],
         kp2: typing.Sequence[cv2.KeyPoint],
         matches: typing.Sequence[cv2.DMatch]
-):
-    pass
-    # YOUR CODE HERE
+) -> np.ndarray:
+    # Compute the projection matrix for Camera 1
+    camera1_projection_matrix = camera_matrix @ np.hstack((
+        camera1_rotation_matrix,
+        camera1_translation_vector
+    ))  # P1 = K[R|t]
 
+    # Compute the projection matrix for Camera 2
+    camera2_projection_matrix = camera_matrix @ np.hstack((
+        camera2_rotation_matrix,
+        camera2_translation_vector
+    ))  # P2 = K[R|t]
+
+    # Extract matched keypoints from both images
+    points1 = np.array([kp1[match.queryIdx].pt for match in matches], dtype=np.float32).T
+    points2 = np.array([kp2[match.trainIdx].pt for match in matches], dtype=np.float32).T
+
+    # Perform triangulation
+    points_4d = cv2.triangulatePoints(
+        camera1_projection_matrix,
+        camera2_projection_matrix,
+        points1,
+        points2
+    )
+
+    # Convert homogeneous coordinates to 3D points
+    points_3d = (points_4d[:3] / points_4d[3]).T  # Divide by w to get [X, Y, Z]
+
+    return points_3d
 
 # Task 4
 def resection(
